@@ -128,9 +128,10 @@ async function drawPromptPayCenterIcon(ctx, x, y, width, height) {
     ctx.drawImage(img, x, y, width, height);
 }
 
-async function createThaiQRCard(payload, targetId) {
+async function createThaiQRCard(payload, targetId, amount = 0) {
+    // ขยายความสูงของการ์ดเล็กน้อยถ้ามีการระบุยอดเงิน
+    const height = amount > 0 ? 860 : 820;
     const width = 750;
-    const height = 820;
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
@@ -140,7 +141,7 @@ async function createThaiQRCard(payload, targetId) {
     ctx.fillStyle = isTrueMoney ? '#FF6B00' : '#EBF6FF';
     ctx.fillRect(0, 0, width, height);
 
-    // 2. โลโก้แบรนด์ด้านบนสุด
+    // 2. โลโก้แบรนด์ด้านบนสุด (เหลือเฉพาะ Krungthai)
     if (isTrueMoney) {
         const tmW = 160;
         const tmH = 65;
@@ -149,14 +150,14 @@ async function createThaiQRCard(payload, targetId) {
         ctx.fillStyle = '#1BA5E1';
         ctx.font = 'bold 36px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('Krungthai กรุงไทย', width / 2, 65);
+        ctx.fillText('Krungthai', width / 2, 65);
     }
 
     // 3. วาดการ์ดขาวตรงกลาง
     const cardX = 50;
     const cardY = 100;
     const cardW = 650;
-    const cardH = 670;
+    const cardH = amount > 0 ? 710 : 670;
     const borderRadius = 24;
 
     ctx.fillStyle = '#FFFFFF';
@@ -200,20 +201,26 @@ async function createThaiQRCard(payload, targetId) {
     const qrImage = await loadImage(qrBuffer);
     ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
 
-    // 7. วาดไอคอน SVG PromptPay สีจริงตรงกลาง QR Code (ไม่มีคำว่า QR แล้ว)
+    // 7. วาดไอคอน SVG PromptPay สีจริงตรงกลาง QR Code
     const iconW = 54;
     const iconH = 35;
     const iconX = (width - iconW) / 2;
     const iconY = qrY + (qrSize - iconH) / 2;
 
-    // รองพื้นกล่องสีขาวรองใต้ไอคอนเพื่อไม่ให้บังเส้น QR
     ctx.fillStyle = '#FFFFFF';
     ctx.beginPath();
     ctx.roundRect(iconX - 6, iconY - 6, iconW + 12, iconH + 12, 8);
     ctx.fill();
 
-    // วาดไอคอน SVG PromptPay ตรงกลาง
     await drawPromptPayCenterIcon(ctx, iconX, iconY, iconW, iconH);
+
+    // 8. แสดงยอดเงิน (เฉพาะตัวเลขอย่างเดียวกรณีมีการระบุจำนวนเงิน)
+    if (amount > 0) {
+        ctx.fillStyle = '#222222';
+        ctx.font = 'bold 34px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), width / 2, qrY + qrSize + 45);
+    }
 
     return canvas.toBuffer('image/png');
 }
@@ -231,7 +238,7 @@ app.get('/qr/:id/:amount?', async (req, res) => {
             payload = generatePayload(targetId, { amount: parsedAmount });
         }
 
-        const imageBuffer = await createThaiQRCard(payload, targetId);
+        const imageBuffer = await createThaiQRCard(payload, targetId, parsedAmount);
 
         res.setHeader('Content-Type', 'image/png');
         res.setHeader('Cache-Control', 'public, max-age=86400');
