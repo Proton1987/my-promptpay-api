@@ -1,12 +1,17 @@
 const express = require('express');
 const generatePayload = require('promptpay-qr');
 const QRCode = require('qrcode');
+const { createCanvas, loadImage } = require('@napi-rs/canvas');
 
 const app = express();
 
-/**
- * ฟังก์ชันคำนวณ CRC16 (CCITT-FALSE / XMODEM)
- */
+// โลโก้ URL สำรอง (สามารถเปลี่ยนเป็น URL รูปโลโก้ของคุณเองได้)
+const LOGOS = {
+    PROMPTPAY: 'https://raw.githubusercontent.com/PromptPay/promptpay-logo/master/promptpay-logo.png',
+    TRUEMONEY: 'https://www.truemoney.com/wp-content/uploads/2020/12/truemoneywallet-logo-icon.png',
+    DEFAULT: 'https://raw.githubusercontent.com/PromptPay/promptpay-logo/master/promptpay-logo.png'
+};
+
 function calculateCRC16(data) {
     let crc = 0xFFFF;
     for (let i = 0; i < data.length; i++) {
@@ -23,122 +28,111 @@ function calculateCRC16(data) {
     return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
 }
 
-/**
- * สร้าง EMVCo Payload สำหรับ e-Wallet ID (15 หลัก) เช่น TrueMoney, ShopeePay
- */
 function generateEWalletPayload(targetId, amount = 0) {
     const targetStr = String(targetId).trim();
     const amountNum = parseFloat(amount) || 0;
     
-    // Formatting Amount (Tag 54)
     let amountPayload = '';
     if (amountNum > 0) {
         const amountStr = amountNum.toFixed(2);
-        const amountLen = String(amountStr.length).padStart(2, '0');
-        amountPayload = `54${amountLen}${amountStr}`;
+        amountPayload = `54${String(amountStr.length).padStart(2, '0')}${amountStr}`;
     }
 
-    // Formatting Merchant Info (Tag 29) - e-Wallet Standard (A000000677010111)
     const merchantInfo = `0016A0000006770101110215${targetStr}`;
-    const merchantLen = String(merchantInfo.length).padStart(2, '0');
-    const field29 = `29${merchantLen}${merchantInfo}`;
-
-    // Static (11) หรือ Dynamic (12) ตามการระบุยอดเงิน
+    const field29 = `29${String(merchantInfo.length).padStart(2, '0')}${merchantInfo}`;
     const qrType = amountNum > 0 ? '010212' : '010211';
-
-    // Base Raw EMVCo Payload
     const raw = `000201${qrType}${field29}5303764${amountPayload}5802TH6304`;
 
     return raw + calculateCRC16(raw);
 }
 
-/**
- * สร้าง EMVCo Payload สำหรับ Bill Payment / Biller ID (15 หลัก)
- */
-function generateBillerPayload(billerId, ref1 = '', ref2 = '', amount = 0) {
-    const billerStr = String(billerId).trim();
-    const amountNum = parseFloat(amount) || 0;
+// ฟังก์ชันสำหรับวาดกรอบ และวางโลโก้ลงบน QR Code
+async function drawDecoratedQR(payload, logoType) {
+    const canvasSize = 600;
+    const qrSize = 440;
+    const canvas = createCanvas(canvasSize, canvasSize);
+    const ctx = canvas.getContext('2d');
 
-    let amountPayload = '';
-    if (amountNum > 0) {
-        const amountStr = amountNum.toFixed(2);
-        const amountLen = String(amountStr.length).padStart(2, '0');
-        amountPayload = `54${amountLen}${amountStr}`;
+    // 1. วาดกรอบสี่เหลี่ยมขอบมน (Card Background)
+    ctx.fillStyle = '#FFFFFF';
+    ctx.roundRect(10, 10, canvasSize - 20, canvasSize - 20, 30);
+    ctx.fill();
+    
+    // เส้นขอบการ์ดสวยๆ
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = logoType === 'TRUEMONEY' ? '#FF5722' : '#003366'; // สีตามแบรนด์
+    ctx.stroke();
+
+    // 2. เจนรูป QR Code ตัวหลัก
+    const qrBuffer = await QRCode.toBuffer(payload, {
+        errorCorrectionLevel: 'H', // ตั้งค่า High เพื่อให้รองรับการทับโลโก้ตรงกลางแล้วยังสแกนติด
+        margin: 1,
+        width: qrSize,
+        color: { dark: '#000000', light: '#FFFFFF' }
+    });
+    const qrImage = await loadImage(qrBuffer);
+
+    // วาด QR Code ลงตรงกลางการ์ด
+    const qrX = (canvasSize - qrSize) / 2;
+    const qrY = (canvasSize - qrSize) / 2;
+    ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+
+    // 3. ใส่โลโก้ตรงกลาง
+    try {
+        const logoUrl = LOGOS[logoType] || LOGOS.DEFAULT;
+        const logoImage = await loadImage(logoUrl);
+        
+        const logoSize = 90;
+        const logoX = (canvasSize - logoSize) / 2;
+        const logoY = (canvasSize - logoSize) / 2;
+        const padding = 10;
+
+        // วาดพื้นหลังขาวกลมๆ/มนๆ รองใต้โลโก้ เพื่อไม่ให้บังเส้น QR
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.arc(canvasSize / 2, canvasSize / 2, (logoSize / 2) + padding, 0, Math.PI * 2);
+        ctx.fill();
+
+        // วาดรูปโลโก้
+        ctx.drawImage(logoImage, logoX, logoY, logoSize, logoSize);
+    } catch (e) {
+        console.log('Logo loading failed, generating QR without logo:', e.message);
     }
 
-    // Tag 30 - Bill Payment Standard (A000000677010112)
-    let subFields = `0016A0000006770101120115${billerStr}`;
-    if (ref1) subFields += `02${String(ref1.length).padStart(2, '0')}${ref1}`;
-    if (ref2) subFields += `03${String(ref2.length).padStart(2, '0')}${ref2}`;
-
-    const field30 = `30${String(subFields.length).padStart(2, '0')}${subFields}`;
-    const qrType = amountNum > 0 ? '010212' : '010211';
-
-    const raw = `000201${qrType}${field30}5303764${amountPayload}5802TH6304`;
-
-    return raw + calculateCRC16(raw);
+    return canvas.toBuffer('image/png');
 }
 
-// API Endpoint หลัก: /qr/:id/:amount?
 app.get('/qr/:id/:amount?', async (req, res) => {
     try {
         const { id, amount } = req.params;
-        const { ref1, ref2, type } = req.query; // ตัวเลือกเสริมส่งผ่าน Query String
-        
-        const targetId = String(id).replace(/[^0-9]/g, '').trim(); // ลบขีดหรือช่องว่างออกให้เหลือเฉพาะตัวเลข
+        const targetId = String(id).replace(/[^0-9]/g, '').trim();
         const parsedAmount = amount ? parseFloat(amount) : 0;
 
         let payload = '';
+        let logoType = 'PROMPTPAY';
 
-        // แยกตรวจสอบประเภทข้อมูลอัตโนมัติ
-        if (type === 'biller') {
-            // บังคับใช้ Bill Payment
-            payload = generateBillerPayload(targetId, ref1, ref2, parsedAmount);
-        } else if (targetId.length === 15) {
-            // e-Wallet ID (เช่น TrueMoney 14000xxxxxxxxxx)
+        // เช็คประเภท ID เพื่อเลือกโครงสร้าง QR และโลโก้
+        if (targetId.length === 15) {
             payload = generateEWalletPayload(targetId, parsedAmount);
-        } else if (targetId.length === 10 || targetId.length === 13) {
-            // เบอร์โทรศัพท์ (10 หลัก) หรือ เลขบัตรประชาชน/ผู้เสียภาษี (13 หลัก)
-            payload = generatePayload(targetId, { amount: parsedAmount });
+            logoType = 'TRUEMONEY'; // ถ้าเป็น 15 หลัก เลือกโลโก้ TrueMoney
         } else {
-            // ลองใช้ไลบรารีมาตรฐานแปลงเบอร์หรือเลขบัญชี
             payload = generatePayload(targetId, { amount: parsedAmount });
+            logoType = 'PROMPTPAY'; // 10 หรือ 13 หลัก เลือกโลโก้ PromptPay
         }
 
-        // ตั้งค่า Response และเปลี่ยนเป็นรูปภาพ PNG
+        // สร้างรูปภาพแบบมีกรอบและโลโก้
+        const imageBuffer = await drawDecoratedQR(payload, logoType);
+
         res.setHeader('Content-Type', 'image/png');
         res.setHeader('Cache-Control', 'public, max-age=86400');
-        
-        await QRCode.toFileStream(res, payload, {
-            margin: 2,
-            width: 500,
-            color: {
-                dark: '#000000',
-                light: '#FFFFFF'
-            }
-        });
+        res.send(imageBuffer);
+
     } catch (err) {
         res.status(400).json({ error: 'Invalid Parameters', message: err.message });
     }
 });
 
-// หน้า Home สำหรับเช็คสถานะ
-app.get('/', (req, res) => {
-    res.json({
-        status: 'online',
-        supported_types: [
-            'Mobile Phone (10 digits)',
-            'National ID / Tax ID (13 digits)',
-            'TrueMoney & e-Wallet ID (15 digits)',
-            'PromptPay Bill Payment (Biller ID)'
-        ],
-        example_usage: '/qr/140000000000000/100'
-    });
-});
-
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 module.exports = app;
