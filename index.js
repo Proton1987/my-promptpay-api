@@ -5,13 +5,6 @@ const { createCanvas, loadImage } = require('@napi-rs/canvas');
 
 const app = express();
 
-// โลโก้ URL สำรอง (สามารถเปลี่ยนเป็น URL รูปโลโก้ของคุณเองได้)
-const LOGOS = {
-    PROMPTPAY: 'https://raw.githubusercontent.com/PromptPay/promptpay-logo/master/promptpay-logo.png',
-    TRUEMONEY: 'https://www.truemoney.com/wp-content/uploads/2020/12/truemoneywallet-logo-icon.png',
-    DEFAULT: 'https://raw.githubusercontent.com/PromptPay/promptpay-logo/master/promptpay-logo.png'
-};
-
 function calculateCRC16(data) {
     let crc = 0xFFFF;
     for (let i = 0; i < data.length; i++) {
@@ -46,58 +39,79 @@ function generateEWalletPayload(targetId, amount = 0) {
     return raw + calculateCRC16(raw);
 }
 
-// ฟังก์ชันสำหรับวาดกรอบ และวางโลโก้ลงบน QR Code
+// ฟังก์ชันวาดโลโก้ Vector TrueMoney / PromptPay ตรงกลาง
+function drawCenterLogo(ctx, cx, cy, logoType) {
+    const boxSize = 90;
+    const x = cx - boxSize / 2;
+    const y = cy - boxSize / 2;
+
+    // 1. วาดพื้นหลังกลมสีขาวรองใต้โลโก้ (ป้องกันทับลาย QR)
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(cx, cy, (boxSize / 2) + 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (logoType === 'TRUEMONEY') {
+        // วาดสัญลักษณ์ TrueMoney (ไอคอนส้ม + ข้อความ TMN)
+        ctx.fillStyle = '#FF5722';
+        ctx.beginPath();
+        ctx.roundRect(x, y, boxSize, boxSize, 18);
+        ctx.fill();
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 36px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('TMN', cx, cy + 2);
+    } else {
+        // วาดสัญลักษณ์ PromptPay (ไอคอนน้ำเงิน + ข้อความ PP)
+        ctx.fillStyle = '#003366';
+        ctx.beginPath();
+        ctx.roundRect(x, y, boxSize, boxSize, 18);
+        ctx.fill();
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 38px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('PP', cx, cy + 2);
+    }
+}
+
+// ฟังก์ชันวาดการ์ด กรอบ และประกอบรูปภาพ
 async function drawDecoratedQR(payload, logoType) {
     const canvasSize = 600;
     const qrSize = 440;
     const canvas = createCanvas(canvasSize, canvasSize);
     const ctx = canvas.getContext('2d');
 
-    // 1. วาดกรอบสี่เหลี่ยมขอบมน (Card Background)
+    // 1. วาดการ์ดหลังสีขาว
     ctx.fillStyle = '#FFFFFF';
-    ctx.roundRect(10, 10, canvasSize - 20, canvasSize - 20, 30);
+    ctx.beginPath();
+    ctx.roundRect(10, 10, canvasSize - 20, canvasSize - 20, 32);
     ctx.fill();
     
-    // เส้นขอบการ์ดสวยๆ
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = logoType === 'TRUEMONEY' ? '#FF5722' : '#003366'; // สีตามแบรนด์
+    // 2. วาดขอบการ์ดตามสีแบรนด์
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = logoType === 'TRUEMONEY' ? '#FF5722' : '#003366';
     ctx.stroke();
 
-    // 2. เจนรูป QR Code ตัวหลัก
+    // 3. เจนรูป QR Code ตัวหลัก
     const qrBuffer = await QRCode.toBuffer(payload, {
-        errorCorrectionLevel: 'H', // ตั้งค่า High เพื่อให้รองรับการทับโลโก้ตรงกลางแล้วยังสแกนติด
+        errorCorrectionLevel: 'H', // ตั้งเป็น High เพื่อให้สแกนติดแม้โดนทับตรงกลาง
         margin: 1,
         width: qrSize,
         color: { dark: '#000000', light: '#FFFFFF' }
     });
     const qrImage = await loadImage(qrBuffer);
 
-    // วาด QR Code ลงตรงกลางการ์ด
+    // วาด QR Code ลงตรงกลาง
     const qrX = (canvasSize - qrSize) / 2;
     const qrY = (canvasSize - qrSize) / 2;
     ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
 
-    // 3. ใส่โลโก้ตรงกลาง
-    try {
-        const logoUrl = LOGOS[logoType] || LOGOS.DEFAULT;
-        const logoImage = await loadImage(logoUrl);
-        
-        const logoSize = 90;
-        const logoX = (canvasSize - logoSize) / 2;
-        const logoY = (canvasSize - logoSize) / 2;
-        const padding = 10;
-
-        // วาดพื้นหลังขาวกลมๆ/มนๆ รองใต้โลโก้ เพื่อไม่ให้บังเส้น QR
-        ctx.fillStyle = '#FFFFFF';
-        ctx.beginPath();
-        ctx.arc(canvasSize / 2, canvasSize / 2, (logoSize / 2) + padding, 0, Math.PI * 2);
-        ctx.fill();
-
-        // วาดรูปโลโก้
-        ctx.drawImage(logoImage, logoX, logoY, logoSize, logoSize);
-    } catch (e) {
-        console.log('Logo loading failed, generating QR without logo:', e.message);
-    }
+    // 4. วาดโลโก้การ์ตูน/สัญลักษณ์แบรนด์ตรงกลาง
+    drawCenterLogo(ctx, canvasSize / 2, canvasSize / 2, logoType);
 
     return canvas.toBuffer('image/png');
 }
@@ -111,16 +125,14 @@ app.get('/qr/:id/:amount?', async (req, res) => {
         let payload = '';
         let logoType = 'PROMPTPAY';
 
-        // เช็คประเภท ID เพื่อเลือกโครงสร้าง QR และโลโก้
         if (targetId.length === 15) {
             payload = generateEWalletPayload(targetId, parsedAmount);
-            logoType = 'TRUEMONEY'; // ถ้าเป็น 15 หลัก เลือกโลโก้ TrueMoney
+            logoType = 'TRUEMONEY';
         } else {
             payload = generatePayload(targetId, { amount: parsedAmount });
-            logoType = 'PROMPTPAY'; // 10 หรือ 13 หลัก เลือกโลโก้ PromptPay
+            logoType = 'PROMPTPAY';
         }
 
-        // สร้างรูปภาพแบบมีกรอบและโลโก้
         const imageBuffer = await drawDecoratedQR(payload, logoType);
 
         res.setHeader('Content-Type', 'image/png');
