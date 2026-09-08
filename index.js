@@ -40,41 +40,44 @@ function generateEWalletPayload(targetId, amount = 0) {
 }
 
 // ฟังก์ชันวาดโลโก้ Vector TrueMoney / PromptPay ตรงกลาง
+// ฟังก์ชันวาดโลโก้ Vector TrueMoney / PromptPay ตรงกลาง
 function drawCenterLogo(ctx, cx, cy, logoType) {
-    const boxSize = 90;
-    const x = cx - boxSize / 2;
-    const y = cy - boxSize / 2;
+    // ขยายความกว้างกล่องเพื่อรองรับตัวอักษรที่ยาวขึ้น
+    const boxWidth = 140;  
+    const boxHeight = 50;  
+    const x = cx - boxWidth / 2;
+    const y = cy - boxHeight / 2;
 
-    // 1. วาดพื้นหลังกลมสีขาวรองใต้โลโก้ (ป้องกันทับลาย QR)
+    // 1. วาดพื้นหลังกลม/มนสีขาวรองใต้โลโก้ (ป้องกันทับลาย QR)
     ctx.fillStyle = '#FFFFFF';
     ctx.beginPath();
-    ctx.arc(cx, cy, (boxSize / 2) + 6, 0, Math.PI * 2);
+    ctx.roundRect(x - 6, y - 6, boxWidth + 12, boxHeight + 12, 16);
     ctx.fill();
 
     if (logoType === 'TRUEMONEY') {
-        // วาดสัญลักษณ์ TrueMoney (ไอคอนส้ม + ข้อความ TMN)
+        // วาดกล่องสีส้ม + ข้อความ TrueMoney
         ctx.fillStyle = '#FF5722';
         ctx.beginPath();
-        ctx.roundRect(x, y, boxSize, boxSize, 18);
+        ctx.roundRect(x, y, boxWidth, boxHeight, 12);
         ctx.fill();
 
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 36px sans-serif';
+        ctx.font = 'bold 20px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('TMN', cx, cy + 2);
+        ctx.fillText('TrueMoney', cx, cy);
     } else {
-        // วาดสัญลักษณ์ PromptPay (ไอคอนน้ำเงิน + ข้อความ PP)
+        // วาดกล่องสีน้ำเงิน + ข้อความ PromptPay
         ctx.fillStyle = '#003366';
         ctx.beginPath();
-        ctx.roundRect(x, y, boxSize, boxSize, 18);
+        ctx.roundRect(x, y, boxWidth, boxHeight, 12);
         ctx.fill();
 
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 38px sans-serif';
+        ctx.font = 'bold 20px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('PP', cx, cy + 2);
+        ctx.fillText('PromptPay', cx, cy);
     }
 }
 
