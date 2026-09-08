@@ -39,81 +39,117 @@ function generateEWalletPayload(targetId, amount = 0) {
     return raw + calculateCRC16(raw);
 }
 
-// ฟังก์ชันวาดโลโก้ Vector TrueMoney / PromptPay ตรงกลาง
-function drawCenterLogo(ctx, cx, cy, logoType) {
-    // ขยายความกว้างกล่องเพื่อรองรับตัวอักษรที่ยาวขึ้น
-    const boxWidth = 140;  
-    const boxHeight = 50;  
-    const x = cx - boxWidth / 2;
-    const y = cy - boxHeight / 2;
+// ฟังก์ชันแปลง SVG PromptPay เป็น Image Buffer แล้ววาดลง Canvas
+async function drawPromptPaySVG(ctx, x, y, width, height) {
+    const svgString = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 140" width="${width}" height="${height}">
+      <g transform="translate(10, 10)">
+        <g id="promptpay-icon">
+          <path d="M 40 45 C 40 20, 70 20, 70 45 C 70 70, 20 60, 20 85 C 20 110, 50 110, 50 85" fill="none" stroke="#002d63" stroke-width="14" stroke-linecap="round"/>
+          <path d="M 50 75 C 50 100, 20 100, 20 75 C 20 50, 70 60, 70 35 C 70 10, 40 10, 40 35" fill="none" stroke="#fa9e1b" stroke-width="14" stroke-linecap="round"/>
+          <circle cx="40" cy="35" r="7" fill="#002d63"/>
+          <circle cx="50" cy="85" r="7" fill="#fa9e1b"/>
+        </g>
+        <g id="promptpay-text" transform="translate(100, 0)">
+          <text x="0" y="70" font-family="Arial, Helvetica, sans-serif" font-size="64" font-weight="900" fill="#002d63" letter-spacing="-2">prompt</text>
+          <text x="215" y="70" font-family="Arial, Helvetica, sans-serif" font-size="64" font-weight="900" fill="#fa9e1b" letter-spacing="-2">pay</text>
+        </g>
+      </g>
+    </svg>`;
 
-    // 1. วาดพื้นหลังกลม/มนสีขาวรองใต้โลโก้ (ป้องกันทับลาย QR)
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath();
-    ctx.roundRect(x - 6, y - 6, boxWidth + 12, boxHeight + 12, 16);
-    ctx.fill();
-
-    if (logoType === 'TRUEMONEY') {
-        // วาดกล่องสีส้ม + ข้อความ TrueMoney
-        ctx.fillStyle = '#FF5722';
-        ctx.beginPath();
-        ctx.roundRect(x, y, boxWidth, boxHeight, 12);
-        ctx.fill();
-
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 20px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('TrueMoney', cx, cy);
-    } else {
-        // วาดกล่องสีน้ำเงิน + ข้อความ PromptPay
-        ctx.fillStyle = '#003366';
-        ctx.beginPath();
-        ctx.roundRect(x, y, boxWidth, boxHeight, 12);
-        ctx.fill();
-
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 20px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('PromptPay', cx, cy);
-    }
+    const img = await loadImage(Buffer.from(svgString));
+    ctx.drawImage(img, x, y, width, height);
 }
 
-// ฟังก์ชันวาดการ์ด กรอบ และประกอบรูปภาพ
-async function drawDecoratedQR(payload, logoType) {
-    const canvasSize = 600;
-    const qrSize = 440;
-    const canvas = createCanvas(canvasSize, canvasSize);
+async function createThaiQRCard(payload, targetId, amount) {
+    const width = 750;
+    const height = 900;
+    const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // 1. วาดการ์ดหลังสีขาว
+    const isTrueMoney = targetId.length === 15;
+
+    // 1. วาดพื้นหลังทั้งรูปตามแบรนด์
+    ctx.fillStyle = isTrueMoney ? '#FF6B00' : '#EBF6FF';
+    ctx.fillRect(0, 0, width, height);
+
+    // 2. ข้อความยี่ห้อด้านบน
+    ctx.fillStyle = isTrueMoney ? '#FFFFFF' : '#1BA5E1';
+    ctx.font = 'bold 38px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(isTrueMoney ? 'truemoney' : 'Krungthai กรุงไทย', width / 2, 75);
+
+    // 3. วาดการ์ดสีขาวตรงกลาง
+    const cardX = 50;
+    const cardY = 120;
+    const cardW = 650;
+    const cardH = 720;
+    const borderRadius = 24;
+
     ctx.fillStyle = '#FFFFFF';
     ctx.beginPath();
-    ctx.roundRect(10, 10, canvasSize - 20, canvasSize - 20, 32);
+    ctx.roundRect(cardX, cardY, cardW, cardH, borderRadius);
     ctx.fill();
-    
-    // 2. วาดขอบการ์ดตามสีแบรนด์
-    ctx.lineWidth = 8;
-    ctx.strokeStyle = logoType === 'TRUEMONEY' ? '#FF5722' : '#003366';
-    ctx.stroke();
 
-    // 3. เจนรูป QR Code ตัวหลัก
+    // 4. แถบ Header สีน้ำเงินเข้ม (THAI QR PAYMENT)
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(cardX, cardY, cardW, cardH, borderRadius);
+    ctx.clip();
+
+    ctx.fillStyle = '#0F3B7A';
+    ctx.fillRect(cardX, cardY, cardW, 90);
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('THAI QR PAYMENT', width / 2, cardY + 55);
+    ctx.restore();
+
+    // 5. วาดโลโก้ PromptPay SVG เหนือ QR Code
+    const svgW = 260;
+    const svgH = 80;
+    const svgX = (width - svgW) / 2;
+    const svgY = cardY + 110;
+    await drawPromptPaySVG(ctx, svgX, svgY, svgW, svgH);
+
+    // 6. วาด QR Code
+    const qrSize = 430;
+    const qrX = (width - qrSize) / 2;
+    const qrY = svgY + svgH + 10;
+
     const qrBuffer = await QRCode.toBuffer(payload, {
-        errorCorrectionLevel: 'H', // ตั้งเป็น High เพื่อให้สแกนติดแม้โดนทับตรงกลาง
+        errorCorrectionLevel: 'H',
         margin: 1,
         width: qrSize,
         color: { dark: '#000000', light: '#FFFFFF' }
     });
     const qrImage = await loadImage(qrBuffer);
-
-    // วาด QR Code ลงตรงกลาง
-    const qrX = (canvasSize - qrSize) / 2;
-    const qrY = (canvasSize - qrSize) / 2;
     ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
 
-    // 4. วาดโลโก้การ์ตูน/สัญลักษณ์แบรนด์ตรงกลาง
-    drawCenterLogo(ctx, canvasSize / 2, canvasSize / 2, logoType);
+    // 7. วาดไอคอนสี่เหลี่ยมเล็กตรงกลาง QR Code
+    const iconSize = 48;
+    const iconX = (width - iconSize) / 2;
+    const iconY = qrY + (qrSize - iconSize) / 2;
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(iconX - 4, iconY - 4, iconSize + 8, iconSize + 8);
+
+    ctx.fillStyle = '#0F3B7A';
+    ctx.fillRect(iconX, iconY, iconSize, iconSize);
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('QR', width / 2, iconY + 28);
+
+    // 8. แสดงจำนวนเงิน (ถ้ามีการระบุยอด)
+    if (amount > 0) {
+        ctx.fillStyle = '#00A859';
+        ctx.font = 'bold 30px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`จำนวนเงิน ${amount.toLocaleString()} บาท`, width / 2, qrY + qrSize + 45);
+    }
 
     return canvas.toBuffer('image/png');
 }
@@ -125,17 +161,13 @@ app.get('/qr/:id/:amount?', async (req, res) => {
         const parsedAmount = amount ? parseFloat(amount) : 0;
 
         let payload = '';
-        let logoType = 'PROMPTPAY';
-
         if (targetId.length === 15) {
             payload = generateEWalletPayload(targetId, parsedAmount);
-            logoType = 'TRUEMONEY';
         } else {
             payload = generatePayload(targetId, { amount: parsedAmount });
-            logoType = 'PROMPTPAY';
         }
 
-        const imageBuffer = await drawDecoratedQR(payload, logoType);
+        const imageBuffer = await createThaiQRCard(payload, targetId, parsedAmount);
 
         res.setHeader('Content-Type', 'image/png');
         res.setHeader('Cache-Control', 'public, max-age=86400');
