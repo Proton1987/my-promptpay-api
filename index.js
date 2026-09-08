@@ -40,7 +40,6 @@ function generateEWalletPayload(targetId, amount = 0) {
 }
 
 // ฟังก์ชันวาดโลโก้ Vector TrueMoney / PromptPay ตรงกลาง
-// ฟังก์ชันวาดโลโก้ Vector TrueMoney / PromptPay ตรงกลาง
 function drawCenterLogo(ctx, cx, cy, logoType) {
     // ขยายความกว้างกล่องเพื่อรองรับตัวอักษรที่ยาวขึ้น
     const boxWidth = 140;  
