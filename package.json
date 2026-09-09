@@ -5,6 +5,9 @@
   "scripts": {
     "start": "node index.js"
   },
+  "overrides": {
+    "qs": "^6.16.0"
+  },
   "dependencies": {
     "@fontsource/sarabun": "^5.3.0",
     "@napi-rs/canvas": "^0.1.52",
