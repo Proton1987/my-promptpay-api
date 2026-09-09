@@ -26,42 +26,16 @@ const FONT_REGULAR = '"SarabunThai", "SarabunLatin"';
 const FONT_BOLD = '"SarabunThaiBold", "SarabunLatinBold"';
 
 // =========================================================================
-// Error logging → Upstash Redis (auto หมดอายุตาม TTL, ไม่เก็บค้างยาว)
-// (เดิมใช้ Vercel KV แต่ package นั้น deprecated แล้ว ตั้งแต่ปลายปี 2024
-// Vercel ย้ายไปแนะนำ Upstash Redis integration ผ่าน Marketplace แทน)
-// ถ้ายังไม่ได้ผูก Redis (เช่นตอน dev เครื่อง local) จะข้ามการบันทึกเงียบ ๆ
-// ไม่ทำให้ request ล้มเพราะ log ไม่ได้
+// Error logging — ใช้ console.error เฉย ๆ (Render มีหน้า Logs ให้ดูอยู่แล้ว
+// ไม่ต้องผูก external service เพิ่ม) แต่ละ error จะมี errorId สั้น ๆ
+// ติดไปกับ response ที่ตอบกลับผู้เรียก API ด้วย เพื่อให้ผู้เรียกเอา ID
+// ไปบอกเรา แล้วเราไปค้นใน Render log เจอเฉพาะของเขา — ไม่มี endpoint
+// ที่เปิดให้ใครดึง log ของคนอื่นออกมาดูได้ทั้งหมด
 // =========================================================================
-const KV_CONFIGURED = !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
-let kv = null;
-if (KV_CONFIGURED) {
-    try {
-        const { Redis } = require('@upstash/redis');
-        kv = Redis.fromEnv();
-    } catch (err) {
-        console.error('โหลด @upstash/redis ไม่สำเร็จ:', err.message);
-    }
-}
-
-const LOG_KEY = 'promptpay:error_logs';
-const LOG_TTL_SECONDS = 60 * 60 * 48; // เก็บ log แค่ 48 ชม. แล้วหายอัตโนมัติ
-const LOG_MAX_ENTRIES = 100;
-
-async function logError(err, context = {}) {
-    console.error(`[${context.route || 'unknown'}]`, err);
-    if (!kv) return;
-    try {
-        const entry = JSON.stringify({
-            time: new Date().toISOString(),
-            message: err.message || String(err),
-            route: context.route || null
-        });
-        await kv.lpush(LOG_KEY, entry);
-        await kv.ltrim(LOG_KEY, 0, LOG_MAX_ENTRIES - 1);
-        await kv.expire(LOG_KEY, LOG_TTL_SECONDS);
-    } catch (kvErr) {
-        console.error('บันทึก log เข้า Redis ไม่สำเร็จ:', kvErr.message);
-    }
+function logError(err, context = {}) {
+    const errorId = Math.random().toString(36).slice(2, 8).toUpperCase();
+    console.error(`[${errorId}] [${context.route || 'unknown'}]`, err);
+    return errorId;
 }
 
 // =========================================================================
@@ -803,32 +777,14 @@ app.get('/qr/:id/:amount?', qrLimiter, async (req, res) => {
         if (err instanceof ValidationError) {
             return res.status(err.status).json({ error: 'Invalid Parameters', message: err.message });
         }
-        // ไม่ leak รายละเอียด internal error กลับไปให้ client
-        await logError(err, { route: '/qr' });
-        res.status(500).json({ error: 'Internal Server Error', message: 'เกิดข้อผิดพลาดระหว่างสร้าง QR Code กรุณาลองใหม่อีกครั้ง' });
-    }
-});
-
-// ดู error log ย้อนหลังแบบง่าย ๆ ต้องมี ?token= ตรงกับ ADMIN_TOKEN ที่ตั้งใน env
-app.get('/admin/logs', async (req, res) => {
-    if (!process.env.ADMIN_TOKEN || req.query.token !== process.env.ADMIN_TOKEN) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-    if (!kv) {
-        return res.json({ enabled: false, message: 'ยังไม่ได้ผูก Upstash Redis (ไม่พบ UPSTASH_REDIS_REST_URL/TOKEN)', logs: [] });
-    }
-    try {
-        const raw = await kv.lrange(LOG_KEY, 0, LOG_MAX_ENTRIES - 1);
-        const logs = raw.map((item) => {
-            try {
-                return typeof item === 'string' ? JSON.parse(item) : item;
-            } catch {
-                return item;
-            }
+        // ไม่ leak รายละเอียด internal error กลับไปให้ client — ให้แค่ errorId
+        // ไปเทียบกับ log ฝั่ง server (Render → Logs) เอาเอง
+        const errorId = logError(err, { route: '/qr' });
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'เกิดข้อผิดพลาดระหว่างสร้าง QR Code กรุณาลองใหม่อีกครั้ง',
+            errorId
         });
-        res.json({ enabled: true, ttlHours: LOG_TTL_SECONDS / 3600, count: logs.length, logs });
-    } catch (err) {
-        res.status(500).json({ error: 'อ่าน log ไม่สำเร็จ', message: err.message });
     }
 });
 
