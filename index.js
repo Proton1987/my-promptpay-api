@@ -26,6 +26,45 @@ const FONT_REGULAR = '"SarabunThai", "SarabunLatin"';
 const FONT_BOLD = '"SarabunThaiBold", "SarabunLatinBold"';
 
 // =========================================================================
+// Error logging → Upstash Redis (auto หมดอายุตาม TTL, ไม่เก็บค้างยาว)
+// (เดิมใช้ Vercel KV แต่ package นั้น deprecated แล้ว ตั้งแต่ปลายปี 2024
+// Vercel ย้ายไปแนะนำ Upstash Redis integration ผ่าน Marketplace แทน)
+// ถ้ายังไม่ได้ผูก Redis (เช่นตอน dev เครื่อง local) จะข้ามการบันทึกเงียบ ๆ
+// ไม่ทำให้ request ล้มเพราะ log ไม่ได้
+// =========================================================================
+const KV_CONFIGURED = !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+let kv = null;
+if (KV_CONFIGURED) {
+    try {
+        const { Redis } = require('@upstash/redis');
+        kv = Redis.fromEnv();
+    } catch (err) {
+        console.error('โหลด @upstash/redis ไม่สำเร็จ:', err.message);
+    }
+}
+
+const LOG_KEY = 'promptpay:error_logs';
+const LOG_TTL_SECONDS = 60 * 60 * 48; // เก็บ log แค่ 48 ชม. แล้วหายอัตโนมัติ
+const LOG_MAX_ENTRIES = 100;
+
+async function logError(err, context = {}) {
+    console.error(`[${context.route || 'unknown'}]`, err);
+    if (!kv) return;
+    try {
+        const entry = JSON.stringify({
+            time: new Date().toISOString(),
+            message: err.message || String(err),
+            route: context.route || null
+        });
+        await kv.lpush(LOG_KEY, entry);
+        await kv.ltrim(LOG_KEY, 0, LOG_MAX_ENTRIES - 1);
+        await kv.expire(LOG_KEY, LOG_TTL_SECONDS);
+    } catch (kvErr) {
+        console.error('บันทึก log เข้า Redis ไม่สำเร็จ:', kvErr.message);
+    }
+}
+
+// =========================================================================
 // Rate limiting — กันการยิง request รัว ๆ ใส่ endpoint ที่ต้อง render ภาพ
 // =========================================================================
 const qrLimiter = rateLimit({
@@ -214,7 +253,29 @@ const COLORS = {
     accent: '#00A796'
 };
 
-async function createThaiQRCard(payload, targetId, amount = 0) {
+// =========================================================================
+// ข้อความหลายภาษา — ใช้ตอน generate การ์ด (query param ?lang=th|en)
+// =========================================================================
+const TEXTS = {
+    th: {
+        subtitle: 'สแกนเพื่อชำระเงินผ่าน PromptPay',
+        headerTitle: 'THAI QR PAYMENT',
+        amountLabel: 'ยอดชำระ',
+        dateLocale: 'th-TH',
+        footer: (t) => `สร้างเมื่อ ${t} น.`
+    },
+    en: {
+        subtitle: 'Scan to pay via PromptPay',
+        headerTitle: 'THAI QR PAYMENT',
+        amountLabel: 'Amount',
+        dateLocale: 'en-GB',
+        footer: (t) => `Generated at ${t}`
+    }
+};
+
+async function createThaiQRCard(payload, targetId, amount = 0, options = {}) {
+    const { lang = 'th', showFooter = true } = options;
+    const t = TEXTS[lang] || TEXTS.th;
     const isTrueMoney = targetId.length === 15;
     const hasAmount = amount > 0;
 
@@ -255,8 +316,13 @@ async function createThaiQRCard(payload, targetId, amount = 0) {
         cursorY = amountValueY + 28;
     }
 
-    const footerY = cursorY + 8;
-    const cardH = footerY + 26 - cardY;
+    let footerY = null;
+    if (showFooter) {
+        footerY = cursorY + 8;
+        cursorY = footerY;
+    }
+
+    const cardH = cursorY + 26 - cardY;
     const height = cardY + cardH + 40;
 
     const canvas = createCanvas(width, height);
@@ -290,7 +356,7 @@ async function createThaiQRCard(payload, targetId, amount = 0) {
     ctx.fillStyle = isTrueMoney ? 'rgba(255,255,255,0.92)' : COLORS.textGray;
     ctx.font = `20px ${FONT_REGULAR}`;
     ctx.textAlign = 'center';
-    ctx.fillText('สแกนเพื่อชำระเงินผ่าน PromptPay', width / 2, subtitleY);
+    ctx.fillText(t.subtitle, width / 2, subtitleY);
 
     // 4. การ์ดขาวตรงกลาง พร้อมเงา
     ctx.save();
@@ -318,7 +384,7 @@ async function createThaiQRCard(payload, targetId, amount = 0) {
     ctx.fillStyle = '#FFFFFF';
     ctx.font = `26px ${FONT_BOLD}`;
     ctx.textAlign = 'center';
-    ctx.fillText('THAI QR PAYMENT', width / 2, cardY + 57);
+    ctx.fillText(t.headerTitle, width / 2, cardY + 57);
     ctx.restore();
 
     // 6. หมายเลขปลายทาง (มาสก์บางส่วนเพื่อความเป็นส่วนตัว)
@@ -393,7 +459,7 @@ async function createThaiQRCard(payload, targetId, amount = 0) {
         ctx.fillStyle = COLORS.textLight;
         ctx.font = `18px ${FONT_REGULAR}`;
         ctx.textAlign = 'center';
-        ctx.fillText('ยอดชำระ', width / 2, amountLabelY);
+        ctx.fillText(t.amountLabel, width / 2, amountLabelY);
 
         ctx.fillStyle = COLORS.textDark;
         ctx.font = `40px ${FONT_BOLD}`;
@@ -402,16 +468,60 @@ async function createThaiQRCard(payload, targetId, amount = 0) {
         ctx.fillText(`฿ ${amountText}`, width / 2, amountValueY);
     }
 
-    // 11. footer เวลาที่สร้าง
-    ctx.fillStyle = COLORS.textLight;
-    ctx.font = `15px ${FONT_REGULAR}`;
-    ctx.textAlign = 'center';
-    const generatedAt = new Date().toLocaleString('th-TH', {
-        timeZone: 'Asia/Bangkok',
-        dateStyle: 'medium',
-        timeStyle: 'short'
+    // 11. footer เวลาที่สร้าง (ปิดได้ด้วย ?footer=false)
+    if (showFooter) {
+        ctx.fillStyle = COLORS.textLight;
+        ctx.font = `15px ${FONT_REGULAR}`;
+        ctx.textAlign = 'center';
+        const generatedAt = new Date().toLocaleString(t.dateLocale, {
+            timeZone: 'Asia/Bangkok',
+            dateStyle: 'medium',
+            timeStyle: 'short'
+        });
+        ctx.fillText(t.footer(generatedAt), width / 2, footerY);
+    }
+
+    return canvas.toBuffer('image/png');
+}
+
+// =========================================================================
+// QR เปล่า ไม่มีการ์ด/แบรนด์ — สำหรับฝังใน UI อื่น (?format=qr)
+// =========================================================================
+async function createBareQR(payload) {
+    const qrSize = 400;
+    const pad = 24;
+    const size = qrSize + pad * 2;
+    const canvas = createCanvas(size, size);
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, size, size);
+
+    const qrBuffer = await QRCode.toBuffer(payload, {
+        errorCorrectionLevel: 'H',
+        margin: 0,
+        width: qrSize,
+        color: { dark: '#0A1F33', light: '#FFFFFF' }
     });
-    ctx.fillText(`สร้างเมื่อ ${generatedAt} น.`, width / 2, footerY);
+    const qrImage = await loadImage(qrBuffer);
+    ctx.drawImage(qrImage, pad, pad, qrSize, qrSize);
+
+    const iconW = 50;
+    const iconH = 32;
+    const iconX = (size - iconW) / 2;
+    const iconY = (size - iconH) / 2;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.15)';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.roundRect(iconX - 7, iconY - 7, iconW + 14, iconH + 14, 9);
+    ctx.fill();
+    ctx.restore();
+
+    const iconImg = await getCachedImage('promptpay-icon', PROMPTPAY_ICON_SVG, iconW, iconH);
+    ctx.drawImage(iconImg, iconX, iconY, iconW, iconH);
 
     return canvas.toBuffer('image/png');
 }
@@ -419,6 +529,238 @@ async function createThaiQRCard(payload, targetId, amount = 0) {
 // =========================================================================
 // Routes
 // =========================================================================
+// =========================================================================
+// หน้าเว็บ: เอกสาร API + ฟอร์ม demo ทดลองยิงจริง (route "/")
+// =========================================================================
+const DOCS_HTML = `<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thai PromptPay QR API</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #0C3C78;
+    --navy-dark: #002D63;
+    --blue: #155AA8;
+    --teal: #00A796;
+    --bg: #F4F7FB;
+    --card: #FFFFFF;
+    --border: #E5EAF0;
+    --text: #1A2B3C;
+    --text-gray: #6B7280;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Sarabun', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  header {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--blue) 100%);
+    color: #fff;
+    padding: 48px 24px 64px;
+    text-align: center;
+  }
+  header h1 { margin: 0 0 8px; font-size: 32px; font-weight: 700; }
+  header p { margin: 0; opacity: .9; font-size: 16px; }
+  .wrap { max-width: 880px; margin: -36px auto 60px; padding: 0 20px; }
+  .card {
+    background: var(--card);
+    border-radius: 20px;
+    padding: 28px;
+    box-shadow: 0 10px 30px rgba(15,30,60,.08);
+    margin-bottom: 24px;
+    border: 1px solid var(--border);
+  }
+  .card h2 { margin-top: 0; font-size: 20px; color: var(--navy-dark); }
+  .card h3 { font-size: 16px; color: var(--navy); margin-bottom: 6px; }
+  label { display: block; font-size: 14px; font-weight: 600; margin: 14px 0 6px; color: var(--text); }
+  input, select {
+    width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+    font-family: inherit; font-size: 15px; background: #fbfcfe;
+  }
+  input:focus, select:focus { outline: 2px solid var(--blue); border-color: var(--blue); }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 140px; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+  .checkbox-row input { width: auto; }
+  button {
+    margin-top: 20px; width: 100%; padding: 13px; border: none; border-radius: 12px;
+    background: var(--navy); color: #fff; font-family: inherit; font-size: 16px; font-weight: 600;
+    cursor: pointer; transition: background .15s;
+  }
+  button:hover { background: var(--blue); }
+  button:disabled { background: #B9C4D3; cursor: not-allowed; }
+  #result { margin-top: 22px; text-align: center; }
+  #result img { max-width: 100%; border-radius: 14px; box-shadow: 0 6px 20px rgba(15,30,60,.12); }
+  #result pre {
+    text-align: left; background: #0C1F33; color: #CFE7FF; padding: 16px; border-radius: 12px;
+    overflow-x: auto; font-size: 13px;
+  }
+  #result .error { color: #C0392B; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 10px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--text-gray); font-weight: 600; font-size: 13px; }
+  code {
+    background: #EEF2F8; padding: 2px 6px; border-radius: 6px; font-size: 13px;
+    color: var(--navy-dark);
+  }
+  pre.example {
+    background: #0C1F33; color: #CFE7FF; padding: 14px 16px; border-radius: 12px;
+    overflow-x: auto; font-size: 13px; margin: 10px 0;
+  }
+  .badge {
+    display: inline-block; background: var(--teal); color: #fff; font-size: 11px;
+    padding: 2px 8px; border-radius: 999px; margin-left: 6px; vertical-align: middle;
+  }
+  footer { text-align: center; color: var(--text-gray); font-size: 13px; padding: 20px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Thai PromptPay QR API</h1>
+  <p>สร้าง QR Code รับเงินผ่าน PromptPay (เบอร์โทร / เลขบัตรประชาชน / TrueMoney Wallet)</p>
+</header>
+
+<div class="wrap">
+
+  <div class="card">
+    <h2>🔧 ลองใช้งานจริง</h2>
+    <div class="row">
+      <div>
+        <label>หมายเลขพร้อมเพย์</label>
+        <input id="f-id" type="text" placeholder="0891234567" value="0891234567">
+      </div>
+      <div>
+        <label>จำนวนเงิน (ไม่ใส่ก็ได้)</label>
+        <input id="f-amount" type="text" placeholder="259.50">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>รูปแบบผลลัพธ์ (format)</label>
+        <select id="f-format">
+          <option value="card">card — การ์ดเต็มพร้อมแบรนด์</option>
+          <option value="qr">qr — QR เปล่า ไม่มีการ์ด</option>
+          <option value="payload">payload — payload string (JSON)</option>
+        </select>
+      </div>
+      <div>
+        <label>ภาษา (lang) — ใช้กับ format=card</label>
+        <select id="f-lang">
+          <option value="th">th — ไทย</option>
+          <option value="en">en — English</option>
+        </select>
+      </div>
+    </div>
+    <div class="checkbox-row">
+      <input id="f-footer" type="checkbox" checked>
+      <label style="margin:0;">แสดง footer เวลาที่สร้าง (ใช้กับ format=card)</label>
+    </div>
+    <button id="f-submit">สร้าง QR Code</button>
+    <div id="result"></div>
+  </div>
+
+  <div class="card">
+    <h2>📄 เอกสาร API</h2>
+
+    <h3>GET /qr/:id/:amount?</h3>
+    <p>สร้าง QR Code พร้อมเพย์ ใส่ <code>:amount</code> หรือไม่ก็ได้ (ไม่ใส่ = ไม่ระบุยอด สแกนแล้วกรอกเองที่แอปธนาคาร)</p>
+    <table>
+      <tr><th>Path param</th><th>คำอธิบาย</th></tr>
+      <tr><td><code>id</code></td><td>เบอร์โทร (10 หลัก), เลขบัตรประชาชน (13 หลัก) หรือ TrueMoney Wallet ID (15 หลัก)</td></tr>
+      <tr><td><code>amount</code></td><td>จำนวนเงิน (ไม่บังคับ, 0–1,000,000)</td></tr>
+    </table>
+    <table>
+      <tr><th>Query param</th><th>ค่าที่รองรับ</th><th>ค่าเริ่มต้น</th></tr>
+      <tr><td><code>format</code></td><td><code>card</code> / <code>qr</code> / <code>payload</code></td><td><code>card</code></td></tr>
+      <tr><td><code>lang</code></td><td><code>th</code> / <code>en</code></td><td><code>th</code></td></tr>
+      <tr><td><code>footer</code></td><td><code>true</code> / <code>false</code></td><td><code>true</code></td></tr>
+    </table>
+
+    <h3>ตัวอย่าง</h3>
+    <pre class="example">GET /qr/0891234567/259.50
+GET /qr/0891234567?format=qr
+GET /qr/0891234567/100?lang=en&footer=false
+GET /qr/123456789012345?format=payload</pre>
+
+    <h3>GET /health <span class="badge">status check</span></h3>
+    <p>คืน <code>{"status":"ok"}</code> สำหรับเช็คว่า service ยังทำงานอยู่</p>
+  </div>
+
+</div>
+
+<footer>Thai PromptPay QR API</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+$('f-submit').addEventListener('click', async () => {
+  const id = $('f-id').value.trim();
+  const amount = $('f-amount').value.trim();
+  const format = $('f-format').value;
+  const lang = $('f-lang').value;
+  const footer = $('f-footer').checked;
+  const resultEl = $('result');
+  const btn = $('f-submit');
+
+  if (!id) {
+    resultEl.innerHTML = '<p class="error">กรุณากรอกหมายเลขพร้อมเพย์</p>';
+    return;
+  }
+
+  let url = '/qr/' + encodeURIComponent(id);
+  if (amount) url += '/' + encodeURIComponent(amount);
+  const params = new URLSearchParams({ format, lang, footer: footer ? 'true' : 'false' });
+  url += '?' + params.toString();
+
+  btn.disabled = true;
+  btn.textContent = 'กำลังสร้าง...';
+  resultEl.innerHTML = '';
+
+  try {
+    if (format === 'payload') {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) {
+        resultEl.innerHTML = '<p class="error">' + (data.message || 'เกิดข้อผิดพลาด') + '</p>';
+      } else {
+        resultEl.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+      }
+    } else {
+      const res = await fetch(url);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        resultEl.innerHTML = '<p class="error">' + (data.message || 'เกิดข้อผิดพลาด') + '</p>';
+      } else {
+        const blob = await res.blob();
+        const imgUrl = URL.createObjectURL(blob);
+        resultEl.innerHTML = '<img src="' + imgUrl + '" alt="QR Code">';
+      }
+    }
+  } catch (err) {
+    resultEl.innerHTML = '<p class="error">เรียก API ไม่สำเร็จ: ' + err.message + '</p>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'สร้าง QR Code';
+  }
+});
+</script>
+
+</body>
+</html>`;
+
+app.get('/', (req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(DOCS_HTML);
+});
+
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
@@ -428,6 +770,10 @@ app.get('/qr/:id/:amount?', qrLimiter, async (req, res) => {
         const targetId = validateTargetId(req.params.id);
         const parsedAmount = validateAmount(req.params.amount);
 
+        const format = ['card', 'qr', 'payload'].includes(req.query.format) ? req.query.format : 'card';
+        const lang = TEXTS[req.query.lang] ? req.query.lang : 'th';
+        const showFooter = req.query.footer !== 'false';
+
         let payload = '';
         if (targetId.length === 15) {
             payload = generateEWalletPayload(targetId, parsedAmount);
@@ -435,7 +781,19 @@ app.get('/qr/:id/:amount?', qrLimiter, async (req, res) => {
             payload = generatePayload(targetId, { amount: parsedAmount || undefined });
         }
 
-        const imageBuffer = await createThaiQRCard(payload, targetId, parsedAmount);
+        // ?format=payload — คืน payload string ดิบเป็น JSON เผื่อฝั่ง frontend อยาก render เอง
+        if (format === 'payload') {
+            return res.json({
+                targetId: maskId(targetId),
+                amount: parsedAmount,
+                payload
+            });
+        }
+
+        // ?format=qr — QR เปล่า ไม่มีการ์ด/แบรนด์ สำหรับฝังใน UI อื่น
+        const imageBuffer = format === 'qr'
+            ? await createBareQR(payload)
+            : await createThaiQRCard(payload, targetId, parsedAmount, { lang, showFooter });
 
         res.setHeader('Content-Type', 'image/png');
         res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -445,9 +803,32 @@ app.get('/qr/:id/:amount?', qrLimiter, async (req, res) => {
         if (err instanceof ValidationError) {
             return res.status(err.status).json({ error: 'Invalid Parameters', message: err.message });
         }
-        // ไม่ leak รายละเอียด internal error กลับไปให้ client, log ไว้ฝั่ง server แทน
-        console.error('QR generation failed:', err);
+        // ไม่ leak รายละเอียด internal error กลับไปให้ client
+        await logError(err, { route: '/qr' });
         res.status(500).json({ error: 'Internal Server Error', message: 'เกิดข้อผิดพลาดระหว่างสร้าง QR Code กรุณาลองใหม่อีกครั้ง' });
+    }
+});
+
+// ดู error log ย้อนหลังแบบง่าย ๆ ต้องมี ?token= ตรงกับ ADMIN_TOKEN ที่ตั้งใน env
+app.get('/admin/logs', async (req, res) => {
+    if (!process.env.ADMIN_TOKEN || req.query.token !== process.env.ADMIN_TOKEN) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    if (!kv) {
+        return res.json({ enabled: false, message: 'ยังไม่ได้ผูก Upstash Redis (ไม่พบ UPSTASH_REDIS_REST_URL/TOKEN)', logs: [] });
+    }
+    try {
+        const raw = await kv.lrange(LOG_KEY, 0, LOG_MAX_ENTRIES - 1);
+        const logs = raw.map((item) => {
+            try {
+                return typeof item === 'string' ? JSON.parse(item) : item;
+            } catch {
+                return item;
+            }
+        });
+        res.json({ enabled: true, ttlHours: LOG_TTL_SECONDS / 3600, count: logs.length, logs });
+    } catch (err) {
+        res.status(500).json({ error: 'อ่าน log ไม่สำเร็จ', message: err.message });
     }
 });
 
