@@ -50,43 +50,6 @@ const qrLimiter = rateLimit({
 });
 
 // =========================================================================
-// CRC16 (CCITT) ตามสเปก EMV QR
-// =========================================================================
-function calculateCRC16(data) {
-    let crc = 0xFFFF;
-    for (let i = 0; i < data.length; i++) {
-        let c = data.charCodeAt(i);
-        crc ^= (c << 8);
-        for (let j = 0; j < 8; j++) {
-            if ((crc & 0x8000) !== 0) {
-                crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
-            } else {
-                crc = (crc << 1) & 0xFFFF;
-            }
-        }
-    }
-    return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
-}
-
-function generateEWalletPayload(targetId, amount = 0) {
-    const targetStr = String(targetId).trim();
-    const amountNum = parseFloat(amount) || 0;
-
-    let amountPayload = '';
-    if (amountNum > 0) {
-        const amountStr = amountNum.toFixed(2);
-        amountPayload = `54${String(amountStr.length).padStart(2, '0')}${amountStr}`;
-    }
-
-    const merchantInfo = `0016A0000006770101110215${targetStr}`;
-    const field29 = `29${String(merchantInfo.length).padStart(2, '0')}${merchantInfo}`;
-    const qrType = amountNum > 0 ? '010212' : '010211';
-    const raw = `000201${qrType}${field29}5303764${amountPayload}5802TH6304`;
-
-    return raw + calculateCRC16(raw);
-}
-
-// =========================================================================
 // Validation — ตรวจ id / amount ก่อนสร้าง payload เพื่อคืน error ที่ชัดเจน
 // =========================================================================
 class ValidationError extends Error {
@@ -748,12 +711,7 @@ app.get('/qr/:id/:amount?', qrLimiter, async (req, res) => {
         const lang = TEXTS[req.query.lang] ? req.query.lang : 'th';
         const showFooter = req.query.footer !== 'false';
 
-        let payload = '';
-        if (targetId.length === 15) {
-            payload = generateEWalletPayload(targetId, parsedAmount);
-        } else {
-            payload = generatePayload(targetId, { amount: parsedAmount || undefined });
-        }
+        const payload = generatePayload(targetId, { amount: parsedAmount || undefined });
 
         // ?format=payload — คืน payload string ดิบเป็น JSON เผื่อฝั่ง frontend อยาก render เอง
         if (format === 'payload') {
