@@ -1,11 +1,47 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
+const cors = require('cors');
 const generatePayload = require('promptpay-qr');
 const QRCode = require('qrcode');
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 
 const app = express();
 app.set('trust proxy', 1);
+
+// =========================================================================
+// Security headers — helmet ตั้งค่า header มาตรฐาน (กัน clickjacking,
+// บังคับ browser ไม่เดา content-type, ปิด referrer leak, ปิด X-Powered-By
+// ที่บอกใบ้ว่า backend เป็น Express ฯลฯ) CSP กำหนดกว้างพอให้หน้า docs/demo
+// ที่มี inline <script>/<style> + Google Fonts ยังทำงานได้ปกติ
+// =========================================================================
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+            fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+            scriptSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", 'data:', 'blob:'],
+            connectSrc: ["'self'"]
+        }
+    }
+}));
+
+// CORS — เปิดกว้างทุก origin ได้ เพราะเป็น public GET API ล้วน ไม่มี
+// cookie/session ให้ต้องป้องกันข้ามโดเมน
+app.use(cors());
+
+// Rate limit เบา ๆ ครอบทุก route (กันบอทถล่มหน้า docs/demo) — endpoint
+// /qr ที่หนักกว่าจะมี limiter เข้มกว่านี้ซ้อนอีกชั้นด้านล่าง
+const globalLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too Many Requests', message: 'เรียก API บ่อยเกินไป กรุณาลองใหม่อีกครั้งในอีกสักครู่' }
+});
+app.use(globalLimiter);
 
 // =========================================================================
 // ลงทะเบียนฟอนต์ไทย (Sarabun) — แคนวาสไม่มีฟอนต์ระบบที่รองรับภาษาไทย
