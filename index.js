@@ -547,18 +547,6 @@ const DOCS_HTML = `<!DOCTYPE html>
   }
   header h1 { margin: 0 0 8px; font-size: 32px; font-weight: 700; }
   header p { margin: 0; opacity: .9; font-size: 16px; }
-  .status-badge {
-    position: absolute; top: 16px; right: 18px;
-    display: flex; align-items: center; gap: 7px;
-    background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.2);
-    padding: 6px 13px; border-radius: 999px; font-size: 12.5px; color: #fff;
-  }
-  .status-dot {
-    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-    background: #FFD866; animation: pulseDot 1s ease-in-out infinite;
-  }
-  .status-dot.online { background: #4ADE80; animation: pulseDot 2s ease-in-out infinite; }
-  .status-dot.offline { background: #F87171; animation: none; }
   .wrap { max-width: 880px; margin: 28px auto 60px; padding: 0 20px; }
   .card {
     background: var(--card);
@@ -637,10 +625,6 @@ const DOCS_HTML = `<!DOCTYPE html>
 <body>
 
 <header>
-  <div class="status-badge">
-    <span class="status-dot" id="status-dot"></span>
-    <span id="status-text">กำลังเชื่อมต่อ...</span>
-  </div>
   <h1>Thai PromptPay QR API</h1>
   <p>สร้าง QR Code รับเงินผ่าน PromptPay (เบอร์โทร / เลขบัตรประชาชน / TrueMoney Wallet)</p>
 </header>
@@ -717,35 +701,6 @@ GET /qr/123456789012345?format=payload</pre>
 
 <script>
 const $ = (id) => document.getElementById(id);
-
-// เช็คสถานะ server จริงตอนหน้าเว็บโหลดเสร็จ โชว์ badge มุมขวาบนของ header
-(async () => {
-  const dot = $('status-dot');
-  const text = $('status-text');
-  const maxAttempts = 20;
-  const intervalMs = 3000;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      const res = await fetch('/health', { cache: 'no-store' });
-      if (res.ok) {
-        dot.classList.add('online');
-        text.textContent = 'ระบบพร้อมใช้งาน';
-        return;
-      }
-    } catch (err) {
-      // เข้าข่าย cold start (idle เกิน ~15 นาทีแล้วเซิร์ฟเวอร์พักตัว) — ลองใหม่แทนที่จะยอมแพ้ตั้งแต่ครั้งแรก
-    }
-    text.textContent = attempt === 1
-      ? 'กำลังปลุกเซิร์ฟเวอร์...'
-      : 'กำลังปลุกเซิร์ฟเวอร์... (รอบที่ ' + attempt + '/' + maxAttempts + ')';
-    if (attempt < maxAttempts) {
-      await new Promise((r) => setTimeout(r, intervalMs));
-    }
-  }
-  dot.classList.add('offline');
-  text.textContent = 'ยังเชื่อมต่อไม่ได้ — ลองกดสร้าง QR เลย หรือรีเฟรชอีกครั้ง';
-})();
 
 $('f-submit').addEventListener('click', async () => {
   const id = $('f-id').value.trim();
