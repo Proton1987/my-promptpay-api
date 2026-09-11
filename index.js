@@ -738,7 +738,7 @@ const $ = (id) => document.getElementById(id);
 (async () => {
   const dot = $('status-dot');
   const text = $('status-text');
-  const maxAttempts = 8;
+  const maxAttempts = 20;
   const intervalMs = 3000;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -760,7 +760,7 @@ const $ = (id) => document.getElementById(id);
     }
   }
   dot.classList.add('offline');
-  text.textContent = 'เชื่อมต่อไม่ได้ ลองรีเฟรชอีกครั้ง';
+  text.textContent = 'ยังเชื่อมต่อไม่ได้ — ลองกดสร้าง QR เลย หรือรีเฟรชอีกครั้ง';
 })();
 
 $('f-submit').addEventListener('click', async () => {
