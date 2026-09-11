@@ -574,6 +574,28 @@ const DOCS_HTML = `<!DOCTYPE html>
   }
   button:hover { background: var(--blue); }
   button:disabled { background: #B9C4D3; cursor: not-allowed; }
+  button.loading {
+    background: var(--navy);
+    animation: pulseBtn 1.1s ease-in-out infinite;
+    cursor: wait;
+  }
+  @keyframes pulseBtn {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .55; }
+  }
+  .loading-note {
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    margin-top: 22px; padding: 14px; font-size: 13px; color: var(--text-gray);
+    text-align: center;
+  }
+  .loading-note .dot {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--teal);
+    animation: pulseDot 1s ease-in-out infinite; flex-shrink: 0;
+  }
+  @keyframes pulseDot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .3; transform: scale(1.4); }
+  }
   #result { margin-top: 22px; text-align: center; }
   #result img { max-width: 100%; border-radius: 14px; box-shadow: 0 6px 20px rgba(15,30,60,.12); }
   #result pre {
@@ -711,8 +733,15 @@ $('f-submit').addEventListener('click', async () => {
   url += '?' + params.toString();
 
   btn.disabled = true;
+  btn.classList.add('loading');
   btn.textContent = 'กำลังสร้าง...';
-  resultEl.innerHTML = '';
+  resultEl.innerHTML = '<div class="loading-note"><span class="dot"></span><span>กำลังติดต่อเซิร์ฟเวอร์...</span></div>';
+
+  // ถ้าผ่านไปสักพักแล้วยังไม่เสร็จ น่าจะเจอ cold start (server พักตัวเพราะ
+  // ไม่มีคนใช้งานนาน) เปลี่ยนข้อความให้อธิบายเหตุผล กันคนคิดว่าค้าง/พัง
+  const slowNoticeTimer = setTimeout(() => {
+    resultEl.innerHTML = '<div class="loading-note"><span class="dot"></span><span>เซิร์ฟเวอร์กำลังปลุกตัวเอง (ไม่มีคนใช้งานนานเกิน ~15 นาที) รออีกสักครู่...</span></div>';
+  }, 3000);
 
   try {
     if (format === 'payload') {
@@ -737,7 +766,9 @@ $('f-submit').addEventListener('click', async () => {
   } catch (err) {
     resultEl.innerHTML = '<p class="error">เรียก API ไม่สำเร็จ: ' + err.message + '</p>';
   } finally {
+    clearTimeout(slowNoticeTimer);
     btn.disabled = false;
+    btn.classList.remove('loading');
     btn.textContent = 'สร้าง QR Code';
   }
 });
