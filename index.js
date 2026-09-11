@@ -542,7 +542,7 @@ const DOCS_HTML = `<!DOCTYPE html>
     position: relative;
     background: linear-gradient(135deg, var(--navy) 0%, var(--blue) 100%);
     color: #fff;
-    padding: 48px 24px 64px;
+    padding: 48px 24px 40px;
     text-align: center;
   }
   header h1 { margin: 0 0 8px; font-size: 32px; font-weight: 700; }
@@ -559,7 +559,7 @@ const DOCS_HTML = `<!DOCTYPE html>
   }
   .status-dot.online { background: #4ADE80; animation: pulseDot 2s ease-in-out infinite; }
   .status-dot.offline { background: #F87171; animation: none; }
-  .wrap { max-width: 880px; margin: -36px auto 60px; padding: 0 20px; }
+  .wrap { max-width: 880px; margin: 28px auto 60px; padding: 0 20px; }
   .card {
     background: var(--card);
     border-radius: 20px;
@@ -633,12 +633,16 @@ const DOCS_HTML = `<!DOCTYPE html>
   }
   footer { text-align: center; color: var(--text-gray); font-size: 13px; padding: 20px; }
   .notice {
-    display: flex; align-items: flex-start; gap: 10px;
-    margin-bottom: 24px; padding: 14px 18px; font-size: 14px; line-height: 1.5;
-    background: #FFF8EC; color: #7A5B00; border: 1px solid #F3DFA6; border-radius: 14px;
-    box-shadow: 0 6px 20px rgba(15,30,60,.06);
+    display: flex; align-items: flex-start; gap: 12px;
+    margin-bottom: 28px; padding: 14px 18px 14px 16px; font-size: 14px; line-height: 1.55;
+    background: #FFF8EC; color: #7A5B00; border: 1px solid #F3DFA6; border-left: 4px solid #F0B429;
+    border-radius: 12px;
   }
-  .notice .icon { font-size: 18px; line-height: 1.4; flex-shrink: 0; }
+  .notice .icon {
+    font-size: 15px; line-height: 1; flex-shrink: 0; margin-top: 1px;
+    width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+    background: #FCEFD1; border-radius: 50%;
+  }
 </style>
 </head>
 <body>
@@ -734,19 +738,29 @@ const $ = (id) => document.getElementById(id);
 (async () => {
   const dot = $('status-dot');
   const text = $('status-text');
-  try {
-    const res = await fetch('/health');
-    if (res.ok) {
-      dot.classList.add('online');
-      text.textContent = 'ระบบพร้อมใช้งาน';
-    } else {
-      dot.classList.add('offline');
-      text.textContent = 'ระบบขัดข้อง';
+  const maxAttempts = 8;
+  const intervalMs = 3000;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetch('/health', { cache: 'no-store' });
+      if (res.ok) {
+        dot.classList.add('online');
+        text.textContent = 'ระบบพร้อมใช้งาน';
+        return;
+      }
+    } catch (err) {
+      // เข้าข่าย cold start (idle เกิน ~15 นาทีแล้วเซิร์ฟเวอร์พักตัว) — ลองใหม่แทนที่จะยอมแพ้ตั้งแต่ครั้งแรก
     }
-  } catch (err) {
-    dot.classList.add('offline');
-    text.textContent = 'เชื่อมต่อไม่ได้';
+    text.textContent = attempt === 1
+      ? 'กำลังปลุกเซิร์ฟเวอร์...'
+      : 'กำลังปลุกเซิร์ฟเวอร์... (รอบที่ ' + attempt + '/' + maxAttempts + ')';
+    if (attempt < maxAttempts) {
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
   }
+  dot.classList.add('offline');
+  text.textContent = 'เชื่อมต่อไม่ได้ ลองรีเฟรชอีกครั้ง';
 })();
 
 $('f-submit').addEventListener('click', async () => {
