@@ -539,6 +539,7 @@ const DOCS_HTML = `<!DOCTYPE html>
     line-height: 1.6;
   }
   header {
+    position: relative;
     background: linear-gradient(135deg, var(--navy) 0%, var(--blue) 100%);
     color: #fff;
     padding: 48px 24px 64px;
@@ -546,6 +547,18 @@ const DOCS_HTML = `<!DOCTYPE html>
   }
   header h1 { margin: 0 0 8px; font-size: 32px; font-weight: 700; }
   header p { margin: 0; opacity: .9; font-size: 16px; }
+  .status-badge {
+    position: absolute; top: 16px; right: 18px;
+    display: flex; align-items: center; gap: 7px;
+    background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.2);
+    padding: 6px 13px; border-radius: 999px; font-size: 12.5px; color: #fff;
+  }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    background: #FFD866; animation: pulseDot 1s ease-in-out infinite;
+  }
+  .status-dot.online { background: #4ADE80; animation: pulseDot 2s ease-in-out infinite; }
+  .status-dot.offline { background: #F87171; animation: none; }
   .wrap { max-width: 880px; margin: -36px auto 60px; padding: 0 20px; }
   .card {
     background: var(--card);
@@ -631,6 +644,10 @@ const DOCS_HTML = `<!DOCTYPE html>
 <body>
 
 <header>
+  <div class="status-badge">
+    <span class="status-dot" id="status-dot"></span>
+    <span id="status-text">กำลังเชื่อมต่อ...</span>
+  </div>
   <h1>Thai PromptPay QR API</h1>
   <p>สร้าง QR Code รับเงินผ่าน PromptPay (เบอร์โทร / เลขบัตรประชาชน / TrueMoney Wallet)</p>
 </header>
@@ -712,6 +729,25 @@ GET /qr/123456789012345?format=payload</pre>
 
 <script>
 const $ = (id) => document.getElementById(id);
+
+// เช็คสถานะ server จริงตอนหน้าเว็บโหลดเสร็จ โชว์ badge มุมขวาบนของ header
+(async () => {
+  const dot = $('status-dot');
+  const text = $('status-text');
+  try {
+    const res = await fetch('/health');
+    if (res.ok) {
+      dot.classList.add('online');
+      text.textContent = 'ระบบพร้อมใช้งาน';
+    } else {
+      dot.classList.add('offline');
+      text.textContent = 'ระบบขัดข้อง';
+    }
+  } catch (err) {
+    dot.classList.add('offline');
+    text.textContent = 'เชื่อมต่อไม่ได้';
+  }
+})();
 
 $('f-submit').addEventListener('click', async () => {
   const id = $('f-id').value.trim();
