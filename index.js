@@ -632,17 +632,6 @@ const DOCS_HTML = `<!DOCTYPE html>
     padding: 2px 8px; border-radius: 999px; margin-left: 6px; vertical-align: middle;
   }
   footer { text-align: center; color: var(--text-gray); font-size: 13px; padding: 20px; }
-  .notice {
-    display: flex; align-items: flex-start; gap: 12px;
-    margin-bottom: 28px; padding: 14px 18px 14px 16px; font-size: 14px; line-height: 1.55;
-    background: #FFF8EC; color: #7A5B00; border: 1px solid #F3DFA6; border-left: 4px solid #F0B429;
-    border-radius: 12px;
-  }
-  .notice .icon {
-    font-size: 15px; line-height: 1; flex-shrink: 0; margin-top: 1px;
-    width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
-    background: #FCEFD1; border-radius: 50%;
-  }
 </style>
 </head>
 <body>
@@ -657,11 +646,6 @@ const DOCS_HTML = `<!DOCTYPE html>
 </header>
 
 <div class="wrap">
-
-  <div class="notice">
-    <span class="icon">⏳</span>
-    <span>ถ้าไม่มีคนใช้งานนานเกิน ~15 นาที เซิร์ฟเวอร์จะพักตัวเอง คำขอแรกหลังจากนั้นอาจช้ากว่าปกติ 10-20 วินาที ครั้งถัดไปจะเร็วปกติ</span>
-  </div>
 
   <div class="card">
     <h2>🔧 ลองใช้งานจริง</h2>
