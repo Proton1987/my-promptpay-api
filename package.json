@@ -1,9 +1,12 @@
 {
   "name": "my-promptpay-api",
   "version": "1.1.0",
+  "private": true,
+  "license": "UNLICENSED",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test"
   },
   "overrides": {
     "qs": "^6.16.0"

@@ -511,6 +511,11 @@ const DOCS_HTML = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Thai PromptPay QR API</title>
+<meta name="description" content="สร้าง QR Code รับเงินผ่าน PromptPay ฟรี รองรับเบอร์โทร เลขบัตรประชาชน และ TrueMoney Wallet">
+<meta property="og:title" content="Thai PromptPay QR API">
+<meta property="og:description" content="สร้าง QR Code รับเงินผ่าน PromptPay ฟรี รองรับเบอร์โทร เลขบัตรประชาชน และ TrueMoney Wallet">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230C3C78'/%3E%3Ctext x='50' y='70' font-size='58' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3E%E0%B8%BF%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -592,6 +597,10 @@ const DOCS_HTML = `<!DOCTYPE html>
     padding: 2px 8px; border-radius: 999px; margin-left: 6px; vertical-align: middle;
   }
   footer { text-align: center; color: var(--text-gray); font-size: 13px; padding: 20px; }
+  .notice {
+    max-width: 880px; margin: 16px auto 0; padding: 10px 18px; font-size: 13px;
+    background: #FFF6E5; color: #7A5B00; border: 1px solid #F0DCA0; border-radius: 10px;
+  }
 </style>
 </head>
 <body>
@@ -600,6 +609,8 @@ const DOCS_HTML = `<!DOCTYPE html>
   <h1>Thai PromptPay QR API</h1>
   <p>สร้าง QR Code รับเงินผ่าน PromptPay (เบอร์โทร / เลขบัตรประชาชน / TrueMoney Wallet)</p>
 </header>
+
+<div class="notice">⏳ ถ้าไม่มีคนใช้งานนานเกิน ~15 นาที เซิร์ฟเวอร์จะพักตัวเอง คำขอแรกหลังจากนั้นอาจช้ากว่าปกติ 10-20 วินาที ครั้งถัดไปจะเร็วปกติ</div>
 
 <div class="wrap">
 
@@ -792,3 +803,10 @@ if (require.main === module) {
 }
 
 module.exports = app;
+// export ฟังก์ชัน pure function ไว้ให้ test เรียกตรงๆ ได้ โดยไม่ต้องเปิด
+// HTTP server จริง — ไม่กระทบการทำงานปกติของแอป (app ยังใช้เป็น Express
+// app ได้เหมือนเดิมทุกอย่าง แค่แปะ property เพิ่มไว้)
+module.exports.validateTargetId = validateTargetId;
+module.exports.validateAmount = validateAmount;
+module.exports.maskId = maskId;
+module.exports.ValidationError = ValidationError;
