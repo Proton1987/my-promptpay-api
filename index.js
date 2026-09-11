@@ -598,9 +598,12 @@ const DOCS_HTML = `<!DOCTYPE html>
   }
   footer { text-align: center; color: var(--text-gray); font-size: 13px; padding: 20px; }
   .notice {
-    max-width: 880px; margin: 16px auto 0; padding: 10px 18px; font-size: 13px;
-    background: #FFF6E5; color: #7A5B00; border: 1px solid #F0DCA0; border-radius: 10px;
+    display: flex; align-items: flex-start; gap: 10px;
+    margin-bottom: 24px; padding: 14px 18px; font-size: 14px; line-height: 1.5;
+    background: #FFF8EC; color: #7A5B00; border: 1px solid #F3DFA6; border-radius: 14px;
+    box-shadow: 0 6px 20px rgba(15,30,60,.06);
   }
+  .notice .icon { font-size: 18px; line-height: 1.4; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -610,9 +613,12 @@ const DOCS_HTML = `<!DOCTYPE html>
   <p>สร้าง QR Code รับเงินผ่าน PromptPay (เบอร์โทร / เลขบัตรประชาชน / TrueMoney Wallet)</p>
 </header>
 
-<div class="notice">⏳ ถ้าไม่มีคนใช้งานนานเกิน ~15 นาที เซิร์ฟเวอร์จะพักตัวเอง คำขอแรกหลังจากนั้นอาจช้ากว่าปกติ 10-20 วินาที ครั้งถัดไปจะเร็วปกติ</div>
-
 <div class="wrap">
+
+  <div class="notice">
+    <span class="icon">⏳</span>
+    <span>ถ้าไม่มีคนใช้งานนานเกิน ~15 นาที เซิร์ฟเวอร์จะพักตัวเอง คำขอแรกหลังจากนั้นอาจช้ากว่าปกติ 10-20 วินาที ครั้งถัดไปจะเร็วปกติ</span>
+  </div>
 
   <div class="card">
     <h2>🔧 ลองใช้งานจริง</h2>
