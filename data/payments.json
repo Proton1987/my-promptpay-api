@@ -1,0 +1,55 @@
+[
+  {
+    "id": "pay_mupk7gpn_6523c9fe",
+    "reference": "TEST-001",
+    "status": "cancelled",
+    "amount": 259.5,
+    "currency": "THB",
+    "targetId": "0891234567",
+    "payload": "00020101021229370016A000000677010111011300668912345675802TH53037645406259.50630467A8",
+    "createdAt": "2026-10-01T13:17:55.162Z",
+    "expiresAt": "2026-10-01T13:47:55.162Z",
+    "cancelledAt": "2026-10-01T13:19:51.412Z",
+    "paidAt": null
+  },
+  {
+    "id": "pay_muqhzfjn_62b30296",
+    "orderId": "ord_muqhzfjn_2e489484",
+    "reference": "ORD-TEST-001",
+    "status": "expired",
+    "amount": 259.5,
+    "currency": "THB",
+    "targetId": "0891234567",
+    "payload": "00020101021229370016A000000677010111011300668912345675802TH53037645406259.50630467A8",
+    "createdAt": "2026-10-02T05:03:27.347Z",
+    "expiresAt": "2026-10-02T05:33:27.347Z",
+    "cancelledAt": null,
+    "paidAt": null,
+    "qrEndpoint": "/qr/0891234567/259.5?format=qr",
+    "expiredAt": "2026-10-02T05:37:57.583Z",
+    "history": [
+      {
+        "from": "pending",
+        "to": "expired",
+        "at": "2026-10-02T05:37:57.583Z",
+        "reason": "sweeper",
+        "eventId": null
+      }
+    ]
+  },
+  {
+    "id": "pay_muqjhbqk_22cc03e4",
+    "orderId": "ord_muqjhbqk_cbf02a39",
+    "reference": null,
+    "status": "pending",
+    "amount": 259.5,
+    "currency": "THB",
+    "targetId": "0891234567",
+    "payload": "00020101021229370016A000000677010111011300668912345675802TH53037645406259.50630467A8",
+    "createdAt": "2026-10-02T05:45:21.836Z",
+    "expiresAt": "2026-10-02T06:15:21.836Z",
+    "cancelledAt": null,
+    "paidAt": null,
+    "qrEndpoint": "/qr/0891234567/259.5?format=qr"
+  }
+]
