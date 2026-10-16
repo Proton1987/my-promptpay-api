@@ -823,6 +823,13 @@ app.get('/qr/:id/:amount?', qrLimiter, async (req, res) => {
 app.use((req, res) => {
     res.status(404).json({ error: 'Not Found', message: 'ไม่พบ endpoint ที่ร้องขอ' });
 });
+// =========================================================================
+// LINE Webhook Endpoint
+// =========================================================================
+app.post('/webhook', (req, res) => {
+    // ตอบกลับ 200 OK ทันทีเพื่อให้ LINE Platform ตรวจสอบผ่าน
+    res.status(200).send('OK');
+});
 
 const PORT = process.env.PORT || 3000;
 if (require.main === module) {
